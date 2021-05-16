@@ -70,7 +70,7 @@ function gentooinstall_detect_boot_device
 		if [ ! -b "$DESTINATION_BOOT_DEVICE" ]; then
 			for PARTITION in $(lsblk -f -n -o PATH "$DESTINATION" | tail -n +2); do
 				local FSTYPE=$(lsblk -f -n -o FSTYPE "$PARTITION")
-				if [ "$FSTYPE" = "vfat" ]; then
+				if [ "$FSTYPE" = "vfat" || "$FSTYPE" = "ext2" ]; then
 					DESTINATION_BOOT_DEVICE="$PARTITION"
 				fi
 			done
@@ -198,6 +198,8 @@ function gentooinstall_help
 	echo "      armv4, armv5, armv6, armv6hf, armv7, armv7hf, aarch64,"
 	echo "      ppc, ppc64,"
 	echo "      alpha"
+	echo "  -b, --boot-mode uefi"
+	echo "    The boot mode in use: bios or uefi."
 	echo "  --bootloader uefi-refind"
 	echo "    Which bootloader to install on the boot device:"
 	echo "      bios-lilo"
@@ -670,16 +672,16 @@ function gentooinstall_phase_fstab
 	mv -n "$DESTINATION_ROOT/etc/fstab" "$DESTINATION_ROOT/etc/fstab.example"
 	echo "# <fs>  <mountpoint>  <type>  <opts>  <dump/pass>" >"$DESTINATION_ROOT/etc/fstab"
 	if [ "$DESTINATION_BOOT_UUID" != "" ]; then
-		echo "UUID=$DESTINATION_BOOT_UUID  /boot  vfat  noauto,noatime  0 0" >>"$DESTINATION_ROOT/etc/fstab"
+		echo "UUID=$DESTINATION_BOOT_UUID  /boot  $BOOT_FS  noauto,noatime  0 0" >>"$DESTINATION_ROOT/etc/fstab"
 	else
-		echo "#UUID=  /boot  vfat  noauto,noatime  0 0" >>"$DESTINATION_ROOT/etc/fstab"
+		echo "#UUID=  /boot  $BOOT_FS  noauto,noatime  0 0" >>"$DESTINATION_ROOT/etc/fstab"
 	fi
-	echo "UUID=$DESTINATION_ROOT_UUID  /  ext4  noatime,nodiratime  0 1" >>"$DESTINATION_ROOT/etc/fstab"
 	if [ "$DESTINATION_SWAP_UUID" != "" ]; then
 		echo "UUID=$DESTINATION_SWAP_UUID  none  swap  sw  0 0" >>"$DESTINATION_ROOT/etc/fstab"
 	else
 		echo "#UUID=  none  swap  sw  0 0" >>"$DESTINATION_ROOT/etc/fstab"
 	fi
+	echo "UUID=$DESTINATION_ROOT_UUID  /  ext4  noatime,nodiratime  0 1" >>"$DESTINATION_ROOT/etc/fstab"
 }
 
 function gentooinstall_phase_kernel
@@ -782,9 +784,10 @@ function gentooinstall_phase_partition
 	echo "  Size: $DEVICE_SIZE Bytes"
 	echo "  Partition Type: $PARTITION_TYPE"
 	echo "  Partition Alignment: $PARTITION_ALIGNMENT Bytes"
+	echo "  Boot Mode: $BOOT_MODE"
 	echo "  Boot Partition Size: $(($BOOT_SIZE_BLOCKS*$PARTITION_ALIGNMENT)) Bytes"
-	echo "  Root Partition Size: $(($ROOT_SIZE_BLOCKS*$PARTITION_ALIGNMENT)) Bytes"
 	echo "  Swap Partition Size: $(($SWAP_SIZE_BLOCKS*$PARTITION_ALIGNMENT)) Bytes"
+	echo "  Root Partition Size: $(($ROOT_SIZE_BLOCKS*$PARTITION_ALIGNMENT)) Bytes"
 	echo "Press CTRL+C to cancel"
 	for SECONDS in $(seq 10 -1 1); do
 		printf "\r${SECONDS} ... "
@@ -795,8 +798,13 @@ function gentooinstall_phase_partition
 	echo -n "Creating the $PARTITION_TYPE partition table... "
 	parted --script "$DESTINATION" mklabel $PARTITION_TYPE
 	echo "done."
-	echo -n "Creating the fat32 boot partition... "
-	parted --script "$DESTINATION" mkpart primary fat32 "$PARTITION_ALIGNMENT"b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS - 1))b
+	if ["$BOOT_MODE" = "bios"]; then
+		echo -n "Creating the ext2 boot partition... "
+		parted --script "$DESTINATION" mkpart primary ext2 "$PARTITION_ALIGNMENT"b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS - 1))b
+	else
+		echo -n "Creating the fat32 boot partition... "
+		parted --script "$DESTINATION" mkpart primary fat32 "$PARTITION_ALIGNMENT"b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS - 1))b
+	fi
 	parted --script "$DESTINATION" set 1 boot on
 	partprobe "$DESTINATION"
 	sleep 5
@@ -808,12 +816,16 @@ function gentooinstall_phase_partition
 		echo "error: Unable to locate first partition on \"$DESTINATION\""
 		return 4
 	fi
-	gentooinstall_quiet mkfs.vfat -F 32 "$DESTINATION_1" || return
+	if ["$BOOT_MODE" = "bios"]; then
+		gentooinstall_quiet mkfs.ext2 "$DESTINATION_1" || return
+	else
+		gentooinstall_quiet mkfs.vfat -F 32 "$DESTINATION_1" || return
+	fi
 	sleep 5
 	DESTINATION_BOOT_UUID=$(blkid -s UUID -o value "$DESTINATION_1")
 	echo "done."
-	echo -n "Creating the ext4 root partition... "
-	parted --script "$DESTINATION" mkpart primary ext4 $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS))b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$ROOT_SIZE_BLOCKS - 1))b
+	echo -n "Creating the swap partition... "
+	parted --script "$DESTINATION" mkpart primary linux-swap $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS))b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$SWAP_SIZE_BLOCKS - 1))b
 	partprobe "$DESTINATION"
 	sleep 5
 	if [ -b "$DESTINATION"p2 ]; then
@@ -824,12 +836,12 @@ function gentooinstall_phase_partition
 		echo "error: Unable to locate second partition on \"$DESTINATION\""
 		return 5
 	fi
-	gentooinstall_quiet mkfs.ext4 -b 4096 -F "$DESTINATION_2" || return
+	gentooinstall_quiet mkswap "$DESTINATION_2" || return
 	sleep 5
-	DESTINATION_ROOT_UUID=$(blkid -s UUID -o value "$DESTINATION_2")
+	DESTINATION_SWAP_UUID=$(blkid -s UUID -o value "$DESTINATION_2")
 	echo "done."
-	echo -n "Creating the swap partition... "
-	parted --script "$DESTINATION" mkpart primary linux-swap $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$ROOT_SIZE_BLOCKS))b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$ROOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$SWAP_SIZE_BLOCKS - 1))b
+	echo -n "Creating the ext4 root partition... "
+	parted --script "$DESTINATION" mkpart primary ext4 $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$SWAP_SIZE_BLOCKS))b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$SWAP_SIZE_BLOCKS + $PARTITION_ALIGNMENT*$ROOT_SIZE_BLOCKS - 1))b
 	partprobe "$DESTINATION"
 	sleep 5
 	if [ -b "$DESTINATION"p3 ]; then
@@ -840,10 +852,11 @@ function gentooinstall_phase_partition
 		echo "error: Unable to locate third partition on \"$DESTINATION\""
 		return 5
 	fi
-	gentooinstall_quiet mkswap "$DESTINATION_3" || return
+	gentooinstall_quiet mkfs.ext4 -b 4096 -F "$DESTINATION_3" || return
 	sleep 5
-	DESTINATION_SWAP_UUID=$(blkid -s UUID -o value "$DESTINATION_3")
+	DESTINATION_ROOT_UUID=$(blkid -s UUID -o value "$DESTINATION_3")
 	echo "done."
+
 	local MEMORY_PHYSICAL=$(free -b | grep Mem | sed -r 's/[^0-9]+([0-9]+) .*/\1/')
 	local MEMORY_SWAP=$(free -b | grep Swap | sed -r 's/[^0-9]+([0-9]+) .*/\1/')
 	local MEMORY_TOTAL=$(($MEMORY_PHYSICAL+$MEMORY_SWAP))
@@ -1131,6 +1144,8 @@ function gentooinstall_quiet
 
 ARCHITECTURE=$(gentooinstall_architecture)
 ASSIMILATE=false
+BOOT_MODE="uefi"
+BOOT_FS="vfat"
 BOOTLOADER=uefi-refind
 CHROOTARCH=""
 DEBUG=false
@@ -1176,6 +1191,10 @@ while [ $# -ne 0 ]; do
 			;;
 		"-a"|"--architecture")
 			ARCHITECTURE="$2"
+			shift 2
+			;;
+		"-b"|"--boot-mode")
+			BOOT_MODE="$2"
 			shift 2
 			;;
 		"--bootloader")
@@ -1278,6 +1297,11 @@ if test -b "$DESTINATION" && $PHASES_DEFAULT && ! $ASSIMILATE; then
 fi
 if [ ! -b "$DESTINATION" ]; then
 	DESTINATION_ROOT="$DESTINATION"
+fi
+
+if [ "$BOOT_MODE" = "bios" ]; then
+	BOOT_FS="ext2"
+	PARTITION_TYPE="msdos"
 fi
 
 #------------------------------------------------------------------------------
