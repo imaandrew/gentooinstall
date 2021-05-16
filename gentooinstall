@@ -667,8 +667,9 @@ function gentooinstall_phase_dynamictranslation
 	esac
 }
 
-function gentooinstall_phase_finalconfig{
-	entooinstall_phase_procsysdev
+function gentooinstall_phase_finalconfig
+{
+	gentooinstall_phase_procsysdev
 	local PREFIX="$CHROOTARCH chroot $DESTINATION_ROOT"
 	if [ "$DESTINATION" = '/' ]; then
 		PREFIX=""
@@ -850,7 +851,7 @@ function gentooinstall_phase_partition
 	echo -n "Creating the $PARTITION_TYPE partition table... "
 	parted --script "$DESTINATION" mklabel $PARTITION_TYPE
 	echo "done."
-	if ["$BOOT_MODE" = "bios"]; then
+	if [ "$BOOT_MODE" = "bios" ]; then
 		echo -n "Creating the ext2 boot partition... "
 		parted --script "$DESTINATION" mkpart primary ext2 "$PARTITION_ALIGNMENT"b $(($PARTITION_ALIGNMENT + $PARTITION_ALIGNMENT*$BOOT_SIZE_BLOCKS - 1))b
 	else
@@ -869,7 +870,7 @@ function gentooinstall_phase_partition
 		echo "error: Unable to locate first partition on \"$DESTINATION\""
 		return 4
 	fi
-	if ["$BOOT_MODE" = "bios"]; then
+	if [ "$BOOT_MODE" = "bios" ]; then
 		gentooinstall_quiet mkfs.ext2 "$DESTINATION_1" || return
 	else
 		gentooinstall_quiet mkfs.vfat -F 32 "$DESTINATION_1" || return
@@ -919,7 +920,7 @@ function gentooinstall_phase_partition
 		echo "Total memory available: $MEMORY_TOTAL Bytes"
 		echo "Less than 4GiB of memory detected"
 		echo -n "Activating the destination swap partition... "
-		swapon "$DESTINATION_3"
+		swapon "$DESTINATION_2"
 		echo "done."
 	fi
 }
@@ -932,11 +933,12 @@ function gentooinstall_phase_portage
 		PREFIX=""
 	fi
 
-	mkdir -p "$DESTINATION_ROOT"/etc/etc/portage/repos.conf
+	mkdir -p "$DESTINATION_ROOT"/etc/portage/repos.conf
 	cp "$DESTINATION_ROOT"/usr/share/portage/config/repos.conf "$DESTINATION_ROOT"/etc/portage/repos.conf/gentoo.conf
 	if [ "$MAKE_CONF" != "" ]; then
 		echo -n "Using $MAKE_CONF as the make.conf"
 		cp -f "$MAKE_CONF" "$DESTINATION_ROOT"/etc/portage/make.conf
+	fi
 	CPUS=$(grep -c ^processor /proc/cpuinfo)
 	sed -i "s/MAKEOPTS=\"-j3\"/MAKEOPTS=\"-j$((CPUS+1)) -l$CPUS\"/g" "$DESTINATION_ROOT"/etc/portage/make.conf
 	sed -i "s/--jobs=3  --load-average=3/--jobs=$CPUS  --load-average=$CPUS/g" "$DESTINATION_ROOT"/etc/portage/make.conf
