@@ -15,7 +15,7 @@ Options:
       ppc, ppc64,
       alpha
   -b, --boot-mode uefi
-	  The boot mode in use: bios or uefi.
+    The boot mode in use: bios or uefi.
   --bootloader uefi-refind
     Which bootloader to install on the boot device:
       bios-lilo
@@ -26,12 +26,18 @@ Options:
     partitioned and mounted. Default mountpoint is "/mnt/gentoo".
   --destination-root-partuuid 00000000-0000-0000-0000-000000000000
     Specify the destination root partuuid instead of automatically detecting it.
+  --hostname gentoo
+    Specify the hostname of the gentoo install
   -h, --help
     Display this help message and exit.
   --no-news
     Do not display unread news items.
   --no-warning
     Do not display or wait for the 10-second pre-install warning.
+  --kernel-config files/linux-v5.12.1-config
+    Specify the kernel config to use instead of the default config
+  --make-conf files/make.conf
+    Set make.conf for installation to use
   -m, --mountpoint /mnt/gentoo
     Where to mount the destination block devices. Default is "/mnt/gentoo"
   --mirror http://distfiles.gentoo.org
@@ -57,11 +63,14 @@ Options:
       portage             default      Install Portage
       timezone            default      Set the timezone
       locale              default      Set the locale
-      kernel                           Install and compile the kernel
-      fstab                            Add boot, root, and swap entries
-      bootloader                       Configure and install a bootloader
+      kernel              default      Install and compile the kernel
+      fstab               default      Add boot, root, and swap entries
+      hostname            default      Change system hostname
+      network             default      Configure networking
+      bootloader          default      Configure and install a bootloader
       update              default      Update the world
       password            default      Set the root password
+      finalconfig         default      Final configuration
   --portage latest
     Install the latest portage snapshot or provide a URL to a different version.
   --stage3 latest
