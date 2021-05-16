@@ -14,6 +14,8 @@ Options:
       armv4, armv5, armv6, armv6hf, armv7, armv7hf, aarch64,
       ppc, ppc64,
       alpha
+  -b, --boot-mode uefi
+	  The boot mode in use: bios or uefi.
   --bootloader uefi-refind
     Which bootloader to install on the boot device:
       bios-lilo
