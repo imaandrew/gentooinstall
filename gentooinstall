@@ -674,11 +674,12 @@ function gentooinstall_phase_finalconfig
 	if [ "$DESTINATION" = '/' ]; then
 		PREFIX=""
 	fi
-	echo "Installing final packages"
+	echo "Installing final packages..."
 	gentooinstall_quiet $PREFIX emerge -a n app-admin/sudo app-shells/bash-completion app-admin/sysklogd sys-process/cronie sys-apps/mlocate
 	sed -i -e 's/# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' "$DESTINATION_ROOT"/etc/sudoers
 	$PREFIX rc-update add sysklogd default
 	$PREFIX rc-update add cronie default
+	echo "done."
 }
 
 function gentooinstall_phase_fstab
@@ -727,7 +728,7 @@ function gentooinstall_phase_kernel
 	FEATURES="-pid-sandbox" $PREFIX emerge -uq app-arch/cpio app-arch/lzop app-arch/lz4 sys-apps/pciutils
 	FEATURES="-pid-sandbox" $PREFIX emerge -uq sys-kernel/gentoo-sources
 	if [ "$KERNEL_CONFIG" != ""]; then
-		cp "$KERNEL_CONFIG" "$DESTINATION_ROOT/usr/src/linux/.config"
+		yes | cp -f "$KERNEL_CONFIG" "$DESTINATION_ROOT/usr/src/linux/.config"
 	else
 		$PREFIX make -C "/usr/src/linux" defconfig
 	fi
@@ -783,9 +784,9 @@ function gentooinstall_phase_network
 	fi
 
 	NETWORK_DEVICE=$(ls /sys/class/net | grep ^e)
-	echo -n "Installing network packages... "
+	echo "Installing network packages... "
 	FEATURES="-pid-sandbox" gentooinstall_quiet $PREFIX emerge -a n net-misc/netifrc net-misc/dhcpcd net-misc/iputils || return
-	echo -n "Using network device $NETWORK_DEVICE"
+	echo "Using network device $NETWORK_DEVICE"
 	echo config_"$NETWORK_DEVICE"=\"dhcp\" > "$DESTINATION_ROOT"/etc/conf.d/net
 	$PREFIX ln -s /etc/init.d/net.lo /etc/init.d/net.$NETWORK_DEVICE
 	$PREFIX rc-update add net.$NETWORK_DEVICE
@@ -936,13 +937,13 @@ function gentooinstall_phase_portage
 	mkdir -p "$DESTINATION_ROOT"/etc/portage/repos.conf
 	cp "$DESTINATION_ROOT"/usr/share/portage/config/repos.conf "$DESTINATION_ROOT"/etc/portage/repos.conf/gentoo.conf
 	if [ "$MAKE_CONF" != "" ]; then
-		echo -n "Using $MAKE_CONF as the make.conf"
+		echo "Using $MAKE_CONF as the make.conf"
 		cp -f "$MAKE_CONF" "$DESTINATION_ROOT"/etc/portage/make.conf
 	fi
 	CPUS=$(grep -c ^processor /proc/cpuinfo)
 	sed -i "s/MAKEOPTS=\"-j3\"/MAKEOPTS=\"-j$((CPUS+1)) -l$CPUS\"/g" "$DESTINATION_ROOT"/etc/portage/make.conf
 	sed -i "s/--jobs=3  --load-average=3/--jobs=$CPUS  --load-average=$CPUS/g" "$DESTINATION_ROOT"/etc/portage/make.conf
-	echo -n "Installing portage... "
+	echo "Installing portage... "
 	if [ "$PORTAGE" = "latest" ]; then
 		gentooinstall_quiet $PREFIX emerge-webrsync || return
 		gentooinstall_quiet $PREFIX emerge --sync || return
@@ -950,14 +951,14 @@ function gentooinstall_phase_portage
 		$PREFIX wget "$PORTAGE" -O /tmp/portage.tar.bz2 || return
 		$PREFIX tar xjpf /tmp/portage.tar.bz2 -C /usr || return
 	fi
-	$PREFIX emerge -q -a n app-portage/mirrorselect
+	echo -n "Selecting fastest mirrors"
+	gentooinstall_quiet $PREFIX emerge -q -a n app-portage/mirrorselect
 	$PREFIX mirrorselect -s5 -b10 -D
 
 	$PREFIX mkdir -p /etc/portage/package.accept_keywords
 	$PREFIX touch /etc/portage/package.accept_keywords/zzzz-autounmask-write
 	$PREFIX mkdir -p /etc/portage/package.use
 	$PREFIX touch /etc/portage/package.use/zzzz-autounmask-write
-	echo "done."
 }
 
 function gentooinstall_phase_procsysdev
@@ -1175,8 +1176,8 @@ function gentooinstall_phase_update
 	fi
 
 	echo -n "Updating world packages... "
-	FEATURES="-pid-sandbox" gentooinstall_quiet $PREFIX emerge -1u --backtrack=65536 sys-apps/portage || return
-	FEATURES="-pid-sandbox" gentooinstall_quiet $PREFIX emerge -uDN --with-bdeps=y --backtrack=65536 world || return
+	FEATURES="-pid-sandbox" $PREFIX emerge -1u --backtrack=65536 sys-apps/portage || return
+	FEATURES="-pid-sandbox" $PREFIX emerge -uDN --with-bdeps=y --backtrack=65536 world || return
 	echo "done."
 }
 
