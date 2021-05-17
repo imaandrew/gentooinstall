@@ -202,6 +202,7 @@ function gentooinstall_help
 	echo "    The boot mode in use: bios or uefi."
 	echo "  --bootloader uefi-refind"
 	echo "    Which bootloader to install on the boot device:"
+	echo "      grub"
 	echo "      bios-lilo"
 	echo "      uefi-refind  default"
 	echo "  -d, --destination /mnt/gentoo"
@@ -379,6 +380,9 @@ function gentooinstall_phase_bootloader
 		"uefi-refind")
 			gentooinstall_phase_bootloader_uefi_refind || return
 			;;
+		"grub")
+			gentooinstall_phase_bootloader_grub || return
+			;;
 		*)
 			echo "error: unsupported bootloader \"$BOOTLOADER\""
 			return 1
@@ -507,6 +511,59 @@ function gentooinstall_phase_bootloader_uefi_refind
 	echo "	loader $KERNEL_FILENAME" >>"$REFIND_CONFIG"
 	echo "	options \"ro root=PARTUUID=$DESTINATION_ROOT_PARTUUID rootwait\"" >>"$REFIND_CONFIG"
 	echo "}" >>"$REFIND_CONFIG"
+}
+
+function gentooinstall_phase_bootloader_grub
+{
+	gentooinstall_phase_procsysdev
+	local PREFIX="$CHROOTARCH chroot $DESTINATION_ROOT"
+	if [ "$DESTINATION" = '/' ]; then
+		PREFIX=""
+	fi
+
+	echo "Installing the grub bootloader for $BOOT_MODE..."
+
+	gentooinstall_detect_boot_device_parent || return
+	gentooinstall_detect_root_partuuid || return
+
+	if [ "$BOOT_MODE" = "uefi" ]; then
+		echo "GRUB_PLATFORMS=\"efi-64\"" >>"$DESTINATION_ROOT"/etc/portage/make.conf
+	fi
+	FEATURES="-pid-sandbox" gentooinstall_quiet $PREFIX emerge -uqN sys-boot/grub:2
+
+	KERNEL_MAKEFILE="$DESTINATION_ROOT/usr/src/linux/Makefile"
+	if [ ! -f "$KERNEL_MAKEFILE" ]; then
+		echo "error: A kernel makefile was not found at \"$KERNEL_MAKEFILE\""
+		return 1
+	fi
+	KERNEL_VERSION=$(grep ^VERSION "$KERNEL_MAKEFILE" | sed -r 's/VERSION *= *//')
+	KERNEL_PATCHLEVEL=$(grep ^PATCHLEVEL "$KERNEL_MAKEFILE" | sed -r 's/PATCHLEVEL *= *//')
+	KERNEL_SUBLEVEL=$(grep ^SUBLEVEL "$KERNEL_MAKEFILE" | sed -r 's/SUBLEVEL *= *//')
+	KERNEL_EXTRAVERSION=$(grep ^EXTRAVERSION "$KERNEL_MAKEFILE" | sed -r 's/EXTRAVERSION *= *-*//')
+
+	KERNEL="$DESTINATION_ROOT/usr/src/linux/arch/$ARCHITECTURE/boot/bzImage"
+	if [ ! -f "$KERNEL" ]; then
+		echo "error: A kernel was not found at \"$KERNEL\""
+		return 1
+	fi
+
+	KERNEL_FILENAME="vmlinuz-$KERNEL_VERSION"
+	if [ "$KERNEL_PATCHLEVEL" != "" ]; then
+		KERNEL_FILENAME="$KERNEL_FILENAME.$KERNEL_PATCHLEVEL"
+	fi
+	if [ "$KERNEL_SUBLEVEL" != "" ]; then
+		KERNEL_FILENAME="$KERNEL_FILENAME.$KERNEL_SUBLEVEL"
+	fi
+	if [ "$KERNEL_EXTRAVERSION" != "" ]; then
+		KERNEL_FILENAME="$KERNEL_FILENAME-$KERNEL_EXTRAVERSION"
+	fi
+	cp -f "$KERNEL" "$DESTINATION_ROOT/boot/$KERNEL_FILENAME"
+	if [ "$BOOT_MODE" = "uefi" ]; then
+		$PREFIX grub-install --target=x86_64-efi --efi-directory="$DESTINATION_ROOT/boot"
+	else
+		$PREFIX grub-install "$DESTINATION_BOOT_DEVICE"
+	$PREFIX grub-mkconfig -o "$DESTINATION_ROOT/boot/grub/grub.cfg"
+
 }
 
 function gentooinstall_phase_stage3delete
@@ -727,7 +784,7 @@ function gentooinstall_phase_kernel
 
 	FEATURES="-pid-sandbox" $PREFIX emerge -uq app-arch/cpio app-arch/lzop app-arch/lz4 sys-apps/pciutils
 	FEATURES="-pid-sandbox" $PREFIX emerge -uq sys-kernel/gentoo-sources
-	if [ "$KERNEL_CONFIG" != ""]; then
+	if [ "$KERNEL_CONFIG" != "" ]; then
 		yes | cp -f "$KERNEL_CONFIG" "$DESTINATION_ROOT/usr/src/linux/.config"
 	else
 		$PREFIX make -C "/usr/src/linux" defconfig

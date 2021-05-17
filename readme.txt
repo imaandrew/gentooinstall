@@ -18,6 +18,7 @@ Options:
     The boot mode in use: bios or uefi.
   --bootloader uefi-refind
     Which bootloader to install on the boot device:
+      grub
       bios-lilo
       uefi-refind  default
   -d, --destination /mnt/gentoo
