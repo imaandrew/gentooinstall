@@ -70,7 +70,7 @@ function gentooinstall_detect_boot_device
 		if [ ! -b "$DESTINATION_BOOT_DEVICE" ]; then
 			for PARTITION in $(lsblk -f -n -o PATH "$DESTINATION" | tail -n +2); do
 				local FSTYPE=$(lsblk -f -n -o FSTYPE "$PARTITION")
-				if [ "$FSTYPE" = "vfat" || "$FSTYPE" = "ext2" ]; then
+				if [ "$FSTYPE" = "vfat" ] || [ "$FSTYPE" = "ext2" ]; then
 					DESTINATION_BOOT_DEVICE="$PARTITION"
 				fi
 			done
@@ -561,8 +561,9 @@ function gentooinstall_phase_bootloader_grub
 	if [ "$BOOT_MODE" = "uefi" ]; then
 		$PREFIX grub-install --target=x86_64-efi --efi-directory="$DESTINATION_ROOT/boot"
 	else
-		$PREFIX grub-install "$DESTINATION_BOOT_DEVICE"
-	$PREFIX grub-mkconfig -o "$DESTINATION_ROOT/boot/grub/grub.cfg"
+		$PREFIX grub-install "$DESTINATION_BOOT_DEVICE_PARENT"
+	fi
+	$PREFIX grub-mkconfig -o "/boot/grub/grub.cfg"
 
 }
 
@@ -846,7 +847,7 @@ function gentooinstall_phase_network
 	echo "Using network device $NETWORK_DEVICE"
 	echo config_"$NETWORK_DEVICE"=\"dhcp\" > "$DESTINATION_ROOT"/etc/conf.d/net
 	$PREFIX ln -s /etc/init.d/net.lo /etc/init.d/net.$NETWORK_DEVICE
-	$PREFIX rc-update add net.$NETWORK_DEVICE
+	$PREFIX rc-update add net."$NETWORK_DEVICE"
 	echo "127.0.0.1     $HOSTNAME $HOSTNAME localhost" >> "$DESTINATION_ROOT"/etc/hosts
 	echo "done."
 }
