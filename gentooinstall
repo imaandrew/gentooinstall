@@ -734,7 +734,9 @@ function gentooinstall_phase_finalconfig
 	fi
 	echo "Installing final packages..."
 	gentooinstall_quiet $PREFIX emerge -a n app-admin/sudo app-shells/bash-completion app-admin/sysklogd sys-process/cronie sys-apps/mlocate
-	sed -i -e 's/# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' "$DESTINATION_ROOT"/etc/sudoers
+	sed -ie 's/# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' "$DESTINATION_ROOT"/etc/sudoers
+	sed -ie 's/pam_unix.so try_first_pass use_authtok nullok sha512 shadow/pam_unix.so nullok sha512 shadow/' "$DESTINATION_ROOT"/etc/pam.d/system-auth
+	sed -ie "s/\(.*passwdqc.*\)/#\1/" "$DESTINATION_ROOT"/etc/pam.d/system-auth
 	$PREFIX rc-update add sysklogd default
 	$PREFIX rc-update add cronie default
 	echo "done."
