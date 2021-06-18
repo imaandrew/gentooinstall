@@ -790,7 +790,9 @@ function gentooinstall_phase_kernel
 	if [ "$KERNEL_CONFIG" != "" ]; then
 		yes | cp -f "$KERNEL_CONFIG" "$DESTINATION_ROOT/usr/src/linux/.config"
 	else
+		$PREFIX make -C "/usr/src/linux" mrproper
 		$PREFIX make -C "/usr/src/linux" defconfig
+		$PREFIX make -C "/usr/src/linux" menuconfig
 	fi
 	$PREFIX make -C "/usr/src/linux" -j $THREADS
 	$PREFIX make -C "/usr/src/linux" modules_install
